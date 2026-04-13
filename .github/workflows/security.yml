@@ -1,0 +1,229 @@
+name: PassGuard Security Pipeline
+
+on:
+  push:
+    branches: [main, develop]
+  pull_request:
+    branches: [main]
+
+# Only one pipeline run per branch at a time
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+
+  # ── Gate 1: Secret Scanning ─────────────────────────────────────────────────
+  secret-scan:
+    name: "Gate 1 — Secret Scanning (Gitleaks)"
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0  # full history for Gitleaks
+      - uses: gitleaks/gitleaks-action@v2
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+  # ── Gate 2: SAST ────────────────────────────────────────────────────────────
+  sast:
+    name: "Gate 2 — SAST (Semgrep)"
+    runs-on: ubuntu-latest
+    container:
+      image: semgrep/semgrep
+    steps:
+      - uses: actions/checkout@v4
+      - name: Run Semgrep with PCI DSS + JWT + security rulesets
+        run: |
+          semgrep scan \
+            --config p/jwt \
+            --config p/secrets \
+            --config p/owasp-top-ten \
+            --config p/typescript \
+            --config p/python \
+            --error \
+            --json \
+            --output semgrep-results.json \
+            .
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: semgrep-results
+          path: semgrep-results.json
+
+  # ── Gate 3: Dependency Audit ────────────────────────────────────────────────
+  dependency-audit:
+    name: "Gate 3 — Dependency Audit"
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+
+      - name: Audit membership-service
+        working-directory: services/membership-service
+        run: |
+          npm ci --ignore-scripts
+          npm audit --audit-level=high
+
+      - name: Audit audit-service
+        working-directory: services/audit-service
+        run: |
+          npm ci --ignore-scripts
+          npm audit --audit-level=high
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Audit entitlement-service (pip-audit)
+        working-directory: services/entitlement-service
+        run: |
+          pip install pip-audit
+          pip-audit -r requirements.txt --severity high
+
+  # ── Gate 4: Container Scanning ──────────────────────────────────────────────
+  container-scan:
+    name: "Gate 4 — Container Scanning (Trivy)"
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Build images
+        run: |
+          docker build -t passguard/membership-service:scan services/membership-service
+          docker build -t passguard/entitlement-service:scan services/entitlement-service
+          docker build -t passguard/audit-service:scan       services/audit-service
+
+      - name: Scan membership-service
+        uses: aquasecurity/trivy-action@master
+        with:
+          image-ref: passguard/membership-service:scan
+          format: table
+          exit-code: "1"
+          severity: HIGH,CRITICAL
+
+      - name: Scan entitlement-service
+        uses: aquasecurity/trivy-action@master
+        with:
+          image-ref: passguard/entitlement-service:scan
+          format: table
+          exit-code: "1"
+          severity: HIGH,CRITICAL
+
+      - name: Scan audit-service
+        uses: aquasecurity/trivy-action@master
+        with:
+          image-ref: passguard/audit-service:scan
+          format: table
+          exit-code: "1"
+          severity: HIGH,CRITICAL
+
+  # ── Gate 5: IaC Security ────────────────────────────────────────────────────
+  iac-security:
+    name: "Gate 5 — IaC Security (Checkov)"
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Run Checkov on Terraform
+        uses: bridgecrewio/checkov-action@master
+        with:
+          directory: terraform/
+          framework: terraform
+          # PCI DSS checks: encryption, logging, access control
+          check: CKV_AWS_7,CKV_AWS_17,CKV_AWS_18,CKV_AWS_19,CKV_AWS_35,CKV_AWS_36,CKV_AWS_57,CKV_AWS_86,CKV_AWS_119,CKV_AWS_145
+          soft_fail: false
+          output_format: cli
+
+  # ── Gate 6: DAST ────────────────────────────────────────────────────────────
+  dast:
+    name: "Gate 6 — DAST (OWASP ZAP)"
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Start services for DAST scan
+        run: |
+          cp .env.example .env
+          # Generate a test HMAC secret (not a real secret)
+          echo "HMAC_SECRET=ci_test_secret_32_chars_minimum_!!" >> .env
+          bash scripts/generate-keys.sh
+          docker compose up -d --build
+          # Wait for health checks
+          timeout 120 bash -c 'until curl -sf http://localhost:3001/health && curl -sf http://localhost:8000/health; do sleep 3; done'
+
+      - name: Run OWASP ZAP baseline scan against entitlement-service
+        uses: zaproxy/action-baseline@v0.12.0
+        with:
+          target: "http://localhost:8000"
+          rules_file_name: ".zap/rules.tsv"
+          fail_action: true
+
+      - name: Stop services
+        if: always()
+        run: docker compose down
+
+  # ── Gate 7: SBOM Generation ─────────────────────────────────────────────────
+  sbom:
+    name: "Gate 7 — SBOM (Syft)"
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Build images
+        run: |
+          docker build -t passguard/membership-service:sbom services/membership-service
+          docker build -t passguard/entitlement-service:sbom services/entitlement-service
+
+      - name: Generate SBOM — membership-service
+        uses: anchore/sbom-action@v0
+        with:
+          image: passguard/membership-service:sbom
+          artifact-name: sbom-membership-service.spdx.json
+          format: spdx-json
+
+      - name: Generate SBOM — entitlement-service
+        uses: anchore/sbom-action@v0
+        with:
+          image: passguard/entitlement-service:sbom
+          artifact-name: sbom-entitlement-service.spdx.json
+          format: spdx-json
+
+  # ── Gate 8: PCI DSS Compliance Gate ─────────────────────────────────────────
+  compliance-gate:
+    name: "Gate 8 — PCI DSS v4 Compliance Gate"
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Run PCI DSS v4 compliance checks
+        run: python scripts/pci_compliance_check.py
+
+  # ── Deploy (only if all gates pass) ─────────────────────────────────────────
+  deploy:
+    name: "Deploy (all gates passed)"
+    runs-on: ubuntu-latest
+    needs:
+      - secret-scan
+      - sast
+      - dependency-audit
+      - container-scan
+      - iac-security
+      - dast
+      - sbom
+      - compliance-gate
+    if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+    steps:
+      - uses: actions/checkout@v4
+      - name: All security gates passed
+        run: |
+          echo "All 8 security gates passed."
+          echo "In production: terraform apply / helm upgrade would run here."
+          echo "Deployment gated on: secret-scan, sast, dependency-audit,"
+          echo "  container-scan, iac-security, dast, sbom, compliance-gate"

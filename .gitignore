@@ -1,0 +1,41 @@
+# Environment
+.env
+*.env.local
+
+# JWT keys — generated locally, never committed
+secrets/
+
+# Node
+node_modules/
+dist/
+*.js.map
+
+# Python
+__pycache__/
+*.pyc
+.venv/
+venv/
+
+# Terraform state — contains secrets
+*.tfstate
+*.tfstate.backup
+.terraform/
+*.tfvars
+!*.tfvars.example
+
+# OS
+.DS_Store
+Thumbs.db
+
+# IDE
+.vscode/
+.idea/
+
+# Test artefacts
+coverage/
+.nyc_output/
+htmlcov/
+
+# Docker
+*.log
+secrets/
