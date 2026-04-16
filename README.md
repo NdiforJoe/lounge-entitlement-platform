@@ -2,7 +2,7 @@
 
 > A PCI DSS v4-compliant, zero-trust lounge access entitlement platform — with a DevSecOps pipeline that proves compliance on every commit.
 
-[![Security Pipeline](https://github.com/YOUR_USERNAME/passguard/actions/workflows/security.yml/badge.svg)](https://github.com/YOUR_USERNAME/passguard/actions/workflows/security.yml)
+[![Security Pipeline](https://github.com/NdiforJoe/lounge-entitlement-platform/actions/workflows/security.yml/badge.svg)](https://github.com/NdiforJoe/lounge-entitlement-platform/actions/workflows/security.yml)
 ![PCI DSS v4](https://img.shields.io/badge/PCI%20DSS-v4%20Compliant-green)
 ![AWS](https://img.shields.io/badge/Cloud-AWS-orange)
 ![License](https://img.shields.io/badge/License-MIT-blue)
@@ -15,7 +15,7 @@ PassGuard models the core security problem of a real-world airport lounge access
 
 > How do you issue unforgeable, real-time access tokens to millions of members, validate them at thousands of partner endpoints globally, handle card-linked entitlement data under PCI DSS v4, and maintain an immutable audit trail — while keeping every partner API in check?
 
-This is not a toy "secure todo app." It is a miniaturised but architecturally complete version of the access entitlement challenge faced by platforms like Priority Pass, which serves 400 million members across 1,800+ lounges in 140+ countries.
+This is not a toy "secure todo app." It is a miniaturised but architecturally complete version of the access entitlement challenge faced by platforms like LoungePass, which serves millions of members across thousands of lounges globally.
 
 **What you will learn building this:**
 - Event-driven microservices security (Kafka + zero-trust)
@@ -52,11 +52,11 @@ This is not a toy "secure todo app." It is a miniaturised but architecturally co
 
 ### Real-World Context
 
-A company like Collinson Group (operator of Priority Pass) faces a deceptively complex security problem. Here is what happens every time a traveller walks up to an airport lounge:
+A company like TravelVault (operator of LoungePass) faces a deceptively complex security problem. Here is what happens every time a traveller walks up to an airport lounge:
 
-1. The traveller's credit card was issued by a bank (e.g. HSBC, Visa, Barclays). The bank pays Collinson to give their premium cardholders lounge access as a perk.
-2. Collinson must verify, in real-time (<100ms), that this specific cardholder is entitled to access this specific lounge right now.
-3. The lounge itself may be operated by a third party (Plaza Premium, an airline, an independent operator). They have a tablet or scanner at the door running a Collinson API.
+1. The traveller's credit card was issued by a bank (e.g. FNB, HSBC, Barclays). The bank pays TravelVault to give their premium cardholders lounge access as a perk.
+2. TravelVault must verify, in real-time (<100ms), that this specific cardholder is entitled to access this specific lounge right now.
+3. The lounge itself may be operated by a third party (Plaza Premium, an airline, an independent operator). They have a tablet or scanner at the door running a TravelVault API.
 4. The billing for the visit flows back through the card network.
 
 This creates a multi-party system with:
@@ -75,7 +75,7 @@ Every element of this system is a potential attack surface:
 | QR code interception | Attacker screenshots your QR and enters the lounge without you |
 | Replay attack | Attacker uses a captured valid token a second time |
 | Rogue lounge partner | A compromised partner API calls the validation endpoint to enumerate member IDs |
-| Credential stuffing | Bots attempt to log into Priority Pass accounts using leaked passwords |
+| Credential stuffing | Bots attempt to log into LoungePass accounts using leaked passwords |
 | Card data leakage | Developer accidentally logs a card number; or a database is breached |
 | Insider threat | An employee queries the member database outside business hours |
 | Impossible travel | A stolen membership card is used in two different continents simultaneously |
@@ -148,16 +148,16 @@ Every significant action in the system emits a Kafka event. This means:
 
 | Layer | Technology | Why This Choice |
 |---|---|---|
-| Cloud | AWS | Industry standard; Collinson's confirmed primary cloud |
+| Cloud | AWS | Industry standard; industry standard cloud platform |
 | Container orchestration | Kubernetes (EKS in prod) | Scales the hot path (entitlement validation) independently |
 | Messaging | Apache Kafka (AWS MSK) | Durable, replayable event log; enables audit trail reconstruction |
-| membership-service | TypeScript / Node.js | Type safety for data models; matches Collinson's confirmed stack |
+| membership-service | TypeScript / Node.js | Type safety for data models; matches the confirmed stack at lounge access operators |
 | entitlement-service | Python / FastAPI | Async I/O for low-latency hot path; Python is the primary DevSecOps language |
 | audit-service | TypeScript / Node.js | Consistent with membership-service; Kafka consumer pattern |
 | Database | PostgreSQL (RDS) | ACID transactions for membership state; encrypted at rest via KMS |
 | Cache / token store | Redis (ElastiCache) | Sub-millisecond TTL enforcement for QR nonces |
-| IaC | Terraform + Helm + Ansible | Collinson's confirmed IaC stack |
-| CI/CD | GitHub Actions | Collinson's confirmed CI/CD (alongside Bitbucket Pipelines) |
+| IaC | Terraform + Helm + Ansible | standard IaC stack for cloud-native platforms |
+| CI/CD | GitHub Actions | standard CI/CD for cloud-native platforms |
 
 ---
 
@@ -360,7 +360,7 @@ This is the hot path — the service called every time a traveller presents thei
 
 #### Why Python for the Hot Path?
 
-FastAPI is one of the fastest Python web frameworks, built on ASGI (async). For a validation endpoint that hits Redis once per request, Python's asyncio is more than sufficient. The team also confirmed Python as the primary DevSecOps language at Collinson — using it for the entitlement service means the same language applies to both application code and security automation scripts.
+FastAPI is one of the fastest Python web frameworks, built on ASGI (async). For a validation endpoint that hits Redis once per request, Python's asyncio is more than sufficient. Python is also the primary language for security automation scripts — using it for the entitlement service means one fewer language context switch.
 
 #### The QR Token Format
 
@@ -560,7 +560,7 @@ RUN addgroup -S passguard && adduser -S passguard -G passguard
 USER passguard
 ```
 
-Every container runs as a non-root user. CIS Docker Benchmark 4.1 — a requirement if you are following the CIS hardening guides that Collinson explicitly references.
+Every container runs as a non-root user. CIS Docker Benchmark 4.1 — a requirement if you are following the CIS hardening guides referenced by PCI DSS-compliant platforms.
 
 ---
 
@@ -795,8 +795,8 @@ Goal: Enter a lounge without a valid membership
 
 ```bash
 # 1. Clone the repo
-git clone https://github.com/YOUR_USERNAME/passguard.git
-cd passguard
+git clone https://github.com/NdiforJoe/lounge-entitlement-platform.git
+cd lounge-entitlement-platform
 
 # 2. Generate RSA keypair + create .env from template
 make setup
@@ -919,7 +919,7 @@ The following are documented but not implemented in this portfolio project. They
 
 ## 14. Technology Choices Explained
 
-Every technology in this project was chosen to mirror the confirmed stack at a real-world lounge access operator. Understanding *why* each tool was chosen makes you a better architect.
+Every technology in this project was chosen to mirror the confirmed stack at a real-world lounge access platform. Understanding *why* each tool was chosen makes you a better architect.
 
 ### Why Kafka (not RabbitMQ or SQS)?
 
@@ -945,7 +945,7 @@ FastAPI generates OpenAPI documentation automatically, which is useful for loung
 
 ### Why Terraform + Helm + Ansible?
 
-This matches Collinson's confirmed IaC stack exactly. The division of responsibility is:
+This matches standard IaC stack for cloud-native platforms exactly. The division of responsibility is:
 - **Terraform** — cloud infrastructure (VPC, EKS, RDS, MSK, IAM)
 - **Helm** — Kubernetes workloads (deployment specs, service definitions, secrets)
 - **Ansible** — node-level configuration (OS hardening, CrowdStrike sensor installation)
@@ -958,4 +958,4 @@ MIT — see `LICENSE`.
 
 ---
 
-*PassGuard was built as a portfolio project to demonstrate DevSecOps engineering skills relevant to real-world lounge access and loyalty platforms. The architecture mirrors the security challenges of production systems at scale but is intentionally simplified for educational purposes.*
+*PassGuard was built as a portfolio project to demonstrate DevSecOps engineering skills for real-world lounge access and loyalty platforms. It is inspired by the architecture of systems like TravelVault's LoungePass — used by banks such as FNB to give premium cardholders access to airport lounges like the OR Tambo SLOW Lounge. The implementation is intentionally simplified for educational purposes.*
