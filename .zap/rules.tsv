@@ -1,0 +1,70 @@
+# ZAP Baseline Scan Rules — PassGuard
+# Format: <rule-id>	<action>	<parameter>	<evidence>
+# Actions:
+#   FAIL  — alert blocks the pipeline (default for High/Medium)
+#   WARN  — alert is logged but does not block
+#   IGNORE — alert is suppressed entirely
+#
+# Rule IDs: https://www.zaproxy.org/docs/alerts/
+#
+# Philosophy: We FAIL on anything that represents a real exploitable issue in
+# our API. We WARN or IGNORE on findings that are dev-environment artefacts
+# or that do not apply to a stateless Bearer-token API.
+
+# ── Cache-control headers ────────────────────────────────────────────────────
+# 10015: Incomplete or No Cache-control Header
+# Reason to IGNORE: This is a JSON REST API with no browser-cached pages.
+# Cache-control is meaningful for HTML/CDN scenarios, not API responses.
+10015	IGNORE
+
+# ── Cross-domain JS source file inclusion ────────────────────────────────────
+# 10017: Cross-Domain JavaScript Source File Inclusion
+# Reason to IGNORE: We serve no JavaScript. ZAP fires this on any <script>
+# tag in an error response. Not applicable to a pure JSON API.
+10017	IGNORE
+
+# ── X-Content-Type-Options ───────────────────────────────────────────────────
+# 10021: X-Content-Type-Options header missing
+# Reason to WARN (not FAIL): Helmet sets this header. If ZAP still reports
+# it, it may be a timing issue during startup. Track but don't block.
+10021	WARN
+
+# ── Timestamp disclosure ─────────────────────────────────────────────────────
+# 10096: Timestamp Disclosure
+# Reason to IGNORE: Our /health endpoints intentionally return a timestamp
+# field (ISO 8601) for monitoring. This is expected, not a disclosure.
+10096	IGNORE
+
+# ── Anti-CSRF tokens ─────────────────────────────────────────────────────────
+# 10202: Absence of Anti-CSRF Tokens
+# Reason to IGNORE: CSRF attacks require cookie-based session auth. PassGuard
+# uses stateless Bearer tokens (HMAC-signed JWTs). A browser cannot silently
+# attach an Authorization header — CSRF does not apply.
+# Reference: OWASP CSRF Prevention Cheat Sheet §Token-based Mitigation
+10202	IGNORE
+
+# ── Information disclosure via server banner ─────────────────────────────────
+# 10036: Server Leaks Version Information via "Server" HTTP Response Header
+# Reason to WARN: Helmet removes Express's "X-Powered-By" but uvicorn may
+# still emit a Server header. Track and remove in production (WAF strip).
+10036	WARN
+
+# ── Content-Security-Policy ──────────────────────────────────────────────────
+# 10038: Content Security Policy (CSP) Header Not Set
+# Reason to WARN: CSP is critical for browser-facing apps. Our API only
+# returns JSON — no HTML, no scripts. Warn so we remember to add it if we
+# ever add a UI surface.
+10038	WARN
+
+# ── Storable/Cacheable responses ─────────────────────────────────────────────
+# 10049: Non-Storable Content
+# Reason to IGNORE: ZAP flags JSON responses without Cache-control as
+# potentially cacheable. In practice, API clients don't cache POST responses.
+10049	IGNORE
+
+# ── Everything else ──────────────────────────────────────────────────────────
+# Any alert NOT listed above uses ZAP's default action:
+#   High   → FAIL
+#   Medium → WARN
+#   Low    → WARN
+#   Info   → IGNORE

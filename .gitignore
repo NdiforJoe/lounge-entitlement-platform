@@ -39,3 +39,6 @@ htmlcov/
 # Docker
 *.log
 secrets/
+
+# Personal study notes
+WALKTHROUGH.md

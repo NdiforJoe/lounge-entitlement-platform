@@ -1,12 +1,18 @@
 import express from "express";
 import helmet from "helmet";
 import rateLimit from "express-rate-limit";
+import swaggerUi from "swagger-ui-express";
 import { initSchema } from "./db/schema";
 import { disconnectProducer } from "./kafka/producer";
 import membersRouter from "./routes/members";
+import { logger } from "./logger";
+import { swaggerSpec } from "./swagger";
 
 const app = express();
 const PORT = parseInt(process.env.PORT ?? "3001", 10);
+
+// ── Docs (before Helmet so Swagger UI assets aren't blocked by CSP) ───────────
+app.use("/docs", swaggerUi.serve, swaggerUi.setup(swaggerSpec));
 
 // ── Security middleware ───────────────────────────────────────────────────────
 
@@ -41,7 +47,7 @@ app.use((_req, res) => {
 
 // Global error handler — never leak stack traces to clients
 app.use((err: Error, _req: express.Request, res: express.Response, _next: express.NextFunction) => {
-  console.error("Unhandled error:", err.message);
+  logger.error("unhandled_error", { message: err.message, pci_req: "6.4" });
   res.status(500).json({ error: "Internal server error" });
 });
 
@@ -50,20 +56,20 @@ app.use((err: Error, _req: express.Request, res: express.Response, _next: expres
 async function start() {
   try {
     await initSchema();
-    console.log("Database schema initialised");
+    logger.info("database_schema_initialised", { pci_req: "6.3" });
 
     app.listen(PORT, () => {
-      console.log(`membership-service listening on :${PORT}`);
+      logger.info("service_started", { port: PORT, pci_req: "6.4" });
     });
   } catch (err) {
-    console.error("Failed to start membership-service:", err);
+    logger.error("service_start_failed", { error: (err as Error).message });
     process.exit(1);
   }
 }
 
 // Graceful shutdown
 process.on("SIGTERM", async () => {
-  console.log("SIGTERM received — shutting down gracefully");
+  logger.info("graceful_shutdown_initiated", { signal: "SIGTERM" });
   await disconnectProducer();
   process.exit(0);
 });

@@ -1,0 +1,97 @@
+# Dependabot — Automated Dependency Security Updates
+#
+# PCI DSS v4 Requirement 6.3.3: All system components are protected from
+# known vulnerabilities by installing applicable security patches/updates.
+#
+# Dependabot operationalises this requirement automatically: when a CVE is
+# published against a dependency we use, GitHub opens a PR within hours
+# with the patched version. No manual monitoring required.
+#
+# Why weekly (not daily): Daily creates PR noise. Weekly gives enough
+# frequency that the window between CVE publication and our patch is <7 days,
+# which satisfies most enterprise SLAs for non-critical vulnerabilities.
+# Critical/High CVEs should be handled via the SECURITY.md disclosure process
+# if they need faster turnaround.
+#
+# Labels: All Dependabot PRs are tagged `security` + `dependencies` so they
+# can be filtered in the PR list and prioritised over feature work.
+
+version: 2
+updates:
+
+  # ── membership-service (Node.js / npm) ─────────────────────────────────────
+  - package-ecosystem: npm
+    directory: /services/membership-service
+    schedule:
+      interval: weekly
+      day: monday
+      time: "06:00"
+      timezone: "Europe/London"
+    labels:
+      - security
+      - dependencies
+    commit-message:
+      prefix: "chore(deps)"
+    # Group non-breaking updates into one PR to reduce noise.
+    # Security updates always get their own PR regardless.
+    groups:
+      non-breaking:
+        update-types:
+          - minor
+          - patch
+
+  # ── audit-service (Node.js / npm) ──────────────────────────────────────────
+  - package-ecosystem: npm
+    directory: /services/audit-service
+    schedule:
+      interval: weekly
+      day: monday
+      time: "06:00"
+      timezone: "Europe/London"
+    labels:
+      - security
+      - dependencies
+    commit-message:
+      prefix: "chore(deps)"
+    groups:
+      non-breaking:
+        update-types:
+          - minor
+          - patch
+
+  # ── entitlement-service (Python / pip) ─────────────────────────────────────
+  - package-ecosystem: pip
+    directory: /services/entitlement-service
+    schedule:
+      interval: weekly
+      day: monday
+      time: "06:00"
+      timezone: "Europe/London"
+    labels:
+      - security
+      - dependencies
+    commit-message:
+      prefix: "chore(deps)"
+    groups:
+      non-breaking:
+        update-types:
+          - minor
+          - patch
+
+  # ── GitHub Actions ──────────────────────────────────────────────────────────
+  # Why update Actions: Supply chain attacks targeting CI/CD pipelines are a
+  # top threat vector (see: SolarWinds, 3CX). Pinning Actions to a SHA hash
+  # and keeping them updated prevents a compromised action version from running
+  # in our pipeline. Dependabot keeps the pinned SHAs current.
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
+      day: monday
+      time: "06:00"
+      timezone: "Europe/London"
+    labels:
+      - security
+      - ci
+    commit-message:
+      prefix: "chore(ci)"

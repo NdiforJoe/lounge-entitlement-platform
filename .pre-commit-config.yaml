@@ -1,0 +1,81 @@
+# Pre-commit hooks — PassGuard (Ring 1: Developer Workstation Security)
+#
+# These hooks run on every `git commit` and block the commit if any check
+# fails. This is the "shift-left" layer — catching issues before they ever
+# reach the repository or CI pipeline.
+#
+# Install: pip install pre-commit && pre-commit install
+# Run manually: pre-commit run --all-files
+#
+# Why shift-left matters:
+#   Finding a leaked secret at commit time costs ~0 (delete the commit).
+#   Finding it post-push costs hours of key rotation + incident response.
+#   Finding it post-breach costs millions + PCI DSS SAQ remediation.
+
+default_language_version:
+  python: python3
+
+repos:
+
+  # ── 1. Gitleaks — Regex-based secret detection ─────────────────────────────
+  # Gitleaks maintains a database of regex patterns for known secret formats:
+  # AWS access keys, GitHub PATs, Stripe keys, private key PEM headers, etc.
+  # It scans the diff of every commit — not just new files.
+  #
+  # Why gitleaks specifically: It's the same tool used in CI Gate 1, so dev
+  # and pipeline use identical rules. No surprise failures at PR time.
+  - repo: https://github.com/gitleaks/gitleaks
+    rev: v8.18.4
+    hooks:
+      - id: gitleaks
+
+  # ── 2. detect-secrets — Entropy-based secret detection ─────────────────────
+  # detect-secrets (Yelp) uses Shannon entropy analysis: a string with very
+  # high randomness is likely a secret, even if it doesn't match any known
+  # pattern. This catches novel API key formats that gitleaks hasn't seen yet.
+  #
+  # Why both scanners: Defence-in-depth at the secret detection layer.
+  # Gitleaks catches known formats. detect-secrets catches unknown high-entropy
+  # strings. Together they cover the known-unknowns and the unknown-unknowns.
+  #
+  # .secrets.baseline: Lists known false positives (e.g. example values in
+  # .env.example) so they don't block every commit. Generate with:
+  #   detect-secrets scan > .secrets.baseline
+  - repo: https://github.com/Yelp/detect-secrets
+    rev: v1.4.0
+    hooks:
+      - id: detect-secrets
+        args: ['--baseline', '.secrets.baseline']
+        exclude: package-lock\.json|\.secrets\.baseline
+
+  # ── 3. General file hygiene ─────────────────────────────────────────────────
+  # These hooks prevent common issues that create noisy diffs and can mask
+  # security-relevant changes in code review.
+  - repo: https://github.com/pre-commit/pre-commit-hooks
+    rev: v4.6.0
+    hooks:
+      # Catches accidental PEM private key blocks — belt-and-suspenders with
+      # gitleaks. Specifically looks for "-----BEGIN ... PRIVATE KEY-----".
+      - id: detect-private-key
+
+      # Prevents committing to main directly. All changes go through PRs so
+      # that CI gates run before merge.
+      - id: no-commit-to-branch
+        args: ['--branch', 'main']
+
+      # File format checks — malformed YAML/JSON can break CI config silently
+      - id: check-yaml
+        args: ['--unsafe']  # allows custom YAML tags (Helm charts, etc.)
+      - id: check-json
+
+      # Merge conflict markers left in source = broken code shipped
+      - id: check-merge-conflict
+
+      # Keeps diffs readable — trailing whitespace creates spurious line changes
+      - id: trailing-whitespace
+        exclude: '\.md$'  # markdown uses trailing spaces for line breaks
+      - id: end-of-file-fixer
+
+      # Prevents committing large files (accidentally packaged dist/, binaries)
+      - id: check-added-large-files
+        args: ['--maxkb=500']

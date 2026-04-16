@@ -891,13 +891,12 @@ In production this alert pages the SOC via PagerDuty.
 
 | Day | Date | What Was Built | Status |
 |---|---|---|---|
-| 1 | Apr 13 | Project scaffold, Docker Compose, membership-service, entitlement-service, audit-service, GitHub Actions pipeline, PCI compliance gate | ✅ Done |
-| 2 | Apr 14 | mTLS for lounge partner API (cfssl CA, per-partner certs), entitlement-service full integration test | 🔲 |
-| 3 | Apr 15 | End-to-end integration, Datadog APM free tier, structured logging for SIEM | 🔲 |
-| 4 | Apr 16 | Pipeline debugging, all 8 gates green on GitHub | 🔲 |
-| 5 | Apr 17 | Terraform modules, architecture diagram, THREAT_MODEL.md | 🔲 |
-| 6 | Apr 18 | Attack simulation recording (asciinema), Makefile polish, README complete | 🔲 |
-| 7 | Apr 19 | Final push, cold-start test, interview pitch rehearsal | 🔲 |
+| 1 | Apr 13 | Project scaffold, Docker Compose, membership-service, entitlement-service, audit-service, GitHub Actions pipeline (8 gates), PCI compliance gate (10 checks) | ✅ Done |
+| 2–3 | Apr 14–15 | *(merged into Day 4–6 work — services were already complete from Day 1)* | ✅ Done |
+| 4 | Apr 16 | `.zap/rules.tsv` (Gate 6 fix), pre-commit hooks (Ring 1 shift-left: gitleaks + detect-secrets + detect-private-key), Dependabot config (PCI DSS Req 6.3.3), SECURITY.md vulnerability disclosure policy | ✅ Done |
+| 5 | Apr 17 | Terraform security modules: KMS (key rotation, explicit policies), networking (3-tier subnets, zero-trust SGs), CloudTrail (log validation, S3 Object Lock WORM, CW alarms), detective controls (GuardDuty, Security Hub PCI standard, AWS Config rules) | ✅ Done |
+| 6 | Apr 18 | Integration tests with security assertions (replay attack, concurrent TOCTOU test, impossible travel, rate limiting, header checks, audit append-only), structured JSON logging (Winston + structlog, PCI req tags, masked member IDs), THREAT_MODEL.md (full STRIDE analysis, 3 attack trees, residual risk register) | ✅ Done |
+| 7 | Apr 19 | Cold-start end-to-end test, interview pitch rehearsal | 🔲 |
 
 ---
 

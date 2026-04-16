@@ -15,7 +15,9 @@ Security controls implemented here:
 import hashlib
 import hmac
 import json
+import logging
 import os
+import sys
 import time
 import uuid
 from contextlib import asynccontextmanager
@@ -24,11 +26,39 @@ from typing import AsyncGenerator
 
 import httpx
 import redis.asyncio as aioredis
+import structlog
 from aiokafka import AIOKafkaProducer
 from fastapi import FastAPI, HTTPException, Request, status
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel, Field
 from pydantic_settings import BaseSettings
+
+# ── Structured logging setup ──────────────────────────────────────────────────
+# structlog renders every log call as a JSON object to stdout.
+# Docker/Kubernetes captures stdout; Fluent Bit ships it to CloudWatch/Datadog.
+#
+# Why structlog over Python's built-in logging?
+# Built-in logging: logger.info("Access granted for member %s", mid)
+# structlog:         log.info("access_granted", member_id=mid, lounge=lid, pci_req="10.2.1")
+#
+# The structlog version is queryable by field, aggregatable by event_type,
+# and directly satisfies PCI DSS Req 10.3 without post-processing.
+
+structlog.configure(
+    processors=[
+        structlog.stdlib.add_log_level,
+        structlog.stdlib.add_logger_name,
+        structlog.processors.TimeStamper(fmt="iso"),
+        structlog.processors.StackInfoRenderer(),
+        structlog.processors.format_exc_info,
+        structlog.processors.JSONRenderer(),     # Emit JSON, not plain text
+    ],
+    wrapper_class=structlog.stdlib.BoundLogger,
+    context_class=dict,
+    logger_factory=structlog.PrintLoggerFactory(file=sys.stdout),
+)
+
+log = structlog.get_logger().bind(service="entitlement-service")
 
 
 # ── Config ────────────────────────────────────────────────────────────────────
@@ -63,7 +93,7 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
         key_serializer=lambda k: k.encode() if k else None,
     )
     await kafka_producer.start()
-    print("entitlement-service started")
+    log.info("service_started", pci_req="6.4")
     yield
 
     await kafka_producer.stop()
@@ -169,6 +199,9 @@ async def generate_token(body: GenerateTokenRequest, request: Request):
 
     # Step 2: Deny suspended/cancelled members immediately
     if member["status"] != "active":
+        log.info("access_denied", reason="member_not_active",
+                 member_id=f"mem_****{body.member_id[-4:]}",
+                 lounge_id=body.lounge_id, pci_req="10.2.1")
         await _publish_event("access.denied", body.member_id, {
             "eventType": "access.denied",
             "reason": "member_not_active",
@@ -289,6 +322,10 @@ async def validate_token(body: ValidateTokenRequest, request: Request):
         raise HTTPException(status_code=403, detail="Token not valid for this lounge")
 
     # All checks passed — grant access
+    log.info("access_granted",
+             member_id=f"mem_****{member_id[-4:]}",
+             lounge_id=body.lounge_id,
+             pci_req="10.2.1")
     await _publish_event("access.granted", member_id, {
         "eventType": "access.granted",
         "member_id": member_id,
