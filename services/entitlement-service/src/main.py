@@ -24,6 +24,8 @@ from contextlib import asynccontextmanager
 from datetime import datetime, timezone
 from typing import AsyncGenerator
 
+from datadog import statsd
+
 import httpx
 import redis.asyncio as aioredis
 import structlog
@@ -47,7 +49,7 @@ from pydantic_settings import BaseSettings
 structlog.configure(
     processors=[
         structlog.stdlib.add_log_level,
-        structlog.stdlib.add_logger_name,
+        # add_logger_name omitted — incompatible with PrintLoggerFactory
         structlog.processors.TimeStamper(fmt="iso"),
         structlog.processors.StackInfoRenderer(),
         structlog.processors.format_exc_info,
@@ -202,6 +204,8 @@ async def generate_token(body: GenerateTokenRequest, request: Request):
         log.info("access_denied", reason="member_not_active",
                  member_id=f"mem_****{body.member_id[-4:]}",
                  lounge_id=body.lounge_id, pci_req="10.2.1")
+        statsd.increment("passguard.access.denied",
+                         tags=[f"reason:member_not_active", f"lounge:{body.lounge_id}"])
         await _publish_event("access.denied", body.member_id, {
             "eventType": "access.denied",
             "reason": "member_not_active",
@@ -213,6 +217,8 @@ async def generate_token(body: GenerateTokenRequest, request: Request):
 
     # Step 3: Check visit limit (-1 = unlimited)
     if member["visit_limit"] != -1 and member["visit_count"] >= member["visit_limit"]:
+        statsd.increment("passguard.access.denied",
+                         tags=[f"reason:visit_limit_exceeded", f"lounge:{body.lounge_id}"])
         await _publish_event("access.denied", body.member_id, {
             "eventType": "access.denied",
             "reason": "visit_limit_exceeded",
@@ -243,6 +249,10 @@ async def generate_token(body: GenerateTokenRequest, request: Request):
         "pending",
     )
 
+    # Metric: token generated — Datadog tracks generation rate per lounge
+    statsd.increment("passguard.token.generated",
+                     tags=[f"lounge:{body.lounge_id}", f"tier:{member.get('tier','unknown')}"])
+
     return {
         "token": token,
         "expires_at": expires_at,
@@ -270,6 +280,11 @@ async def validate_token(body: ValidateTokenRequest, request: Request):
     # Check 1: Signature
     payload = _verify_token(body.token)
     if payload is None:
+        statsd.increment("passguard.access.denied",
+                         tags=["reason:invalid_signature", f"lounge:{body.lounge_id}"])
+        # Security: count forged token attempts — spike = active attack
+        statsd.increment("passguard.security.forged_token_attempt",
+                         tags=[f"lounge:{body.lounge_id}"])
         await _publish_event("access.denied", "unknown", {
             "eventType": "access.denied",
             "reason": "invalid_signature",
@@ -285,6 +300,8 @@ async def validate_token(body: ValidateTokenRequest, request: Request):
 
     # Check 2: Expiry
     if now > expires_at:
+        statsd.increment("passguard.access.denied",
+                         tags=["reason:token_expired", f"lounge:{body.lounge_id}"])
         await _publish_event("access.denied", member_id, {
             "eventType": "access.denied",
             "reason": "token_expired",
@@ -299,6 +316,11 @@ async def validate_token(body: ValidateTokenRequest, request: Request):
     nonce_value = await redis_client.getdel(f"qr:nonce:{nonce}")
     if nonce_value is None:
         # Nonce not found = already used OR expired from Redis
+        statsd.increment("passguard.access.denied",
+                         tags=["reason:token_replayed_or_expired", f"lounge:{body.lounge_id}"])
+        # Security: replay attempts are tracked separately — spike = active attack
+        statsd.increment("passguard.security.replay_attempt",
+                         tags=[f"lounge:{body.lounge_id}"])
         await _publish_event("access.denied", member_id, {
             "eventType": "access.denied",
             "reason": "token_replayed_or_expired",
@@ -326,6 +348,15 @@ async def validate_token(body: ValidateTokenRequest, request: Request):
              member_id=f"mem_****{member_id[-4:]}",
              lounge_id=body.lounge_id,
              pci_req="10.2.1")
+
+    # Metric: successful grant — primary business health metric
+    statsd.increment("passguard.access.granted",
+                     tags=[f"lounge:{body.lounge_id}"])
+    # Timing metric: how long the full validation took (ms since request start)
+    statsd.histogram("passguard.token.validation.latency_ms",
+                     value=(time.time() - now) * 1000,
+                     tags=[f"lounge:{body.lounge_id}"])
+
     await _publish_event("access.granted", member_id, {
         "eventType": "access.granted",
         "member_id": member_id,

@@ -60,6 +60,11 @@ services:
       interval: 10s
       timeout: 5s
       retries: 5
+    labels:
+      # Datadog autodiscovery — tells the agent how to connect to this Redis instance.
+      # The password is injected from the REDIS_PASSWORD env var so it's never hardcoded.
+      com.datadoghq.ad.checks: >-
+        {"redisdb": {"instances": [{"host": "%%host%%", "port": 6379, "password": "${REDIS_PASSWORD:-redis_dev}"}]}}
 
   kafka-init:
     image: confluentinc/cp-kafka:7.6.0
@@ -78,6 +83,34 @@ services:
       kafka-topics --bootstrap-server kafka:29092 --list
       "
 
+  # ─── Observability ────────────────────────────────────────────────────────────
+
+  datadog-agent:
+    image: gcr.io/datadoghq/agent:7
+    environment:
+      DD_API_KEY: ${DD_API_KEY}
+      DD_SITE: ${DD_SITE:-us5.datadoghq.com}
+      # Log collection — agent picks up all container logs tagged with
+      # com.datadoghq.ad.logs labels. JSON logs are parsed automatically.
+      DD_LOGS_ENABLED: "true"
+      DD_LOGS_CONFIG_CONTAINER_COLLECT_ALL: "true"
+      DD_CONTAINER_EXCLUDE: "name:datadog-agent"
+      # APM — receives traces from ddtrace (Python) and dd-trace (Node.js)
+      DD_APM_ENABLED: "true"
+      DD_APM_NON_LOCAL_TRAFFIC: "true"
+      # DogStatsD — receives custom security metrics from services
+      DD_DOGSTATSD_NON_LOCAL_TRAFFIC: "true"
+      DD_HOSTNAME: passguard-local
+      DD_ENV: development
+      DD_TAGS: "project:passguard compliance:pci-dss-v4"
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+      - /proc/:/host/proc/:ro
+      - /sys/fs/cgroup:/host/sys/fs/cgroup:ro
+    ports:
+      - "8125:8125/udp"   # DogStatsD — custom metrics
+      - "8126:8126/tcp"   # APM trace receiver
+
   # ─── Services ─────────────────────────────────────────────────────────────────
 
   membership-service:
@@ -92,6 +125,13 @@ services:
       KAFKA_BROKERS: kafka:29092
       JWT_PRIVATE_KEY_PATH: /run/secrets/jwt_private_key
       NODE_ENV: development
+      # Datadog APM
+      DD_AGENT_HOST: datadog-agent
+      DD_TRACE_AGENT_PORT: 8126
+      DD_SERVICE: membership-service
+      DD_ENV: development
+      DD_VERSION: "1.0.0"
+      DD_LOGS_INJECTION: "true"
     volumes:
       - ./secrets:/run/secrets:ro
     depends_on:
@@ -99,6 +139,8 @@ services:
         condition: service_healthy
       kafka:
         condition: service_healthy
+    labels:
+      com.datadoghq.ad.logs: '[{"source":"nodejs","service":"membership-service"}]'
     healthcheck:
       test: ["CMD", "wget", "-qO-", "http://localhost:3001/health"]
       interval: 15s
@@ -118,6 +160,16 @@ services:
       JWT_PUBLIC_KEY_PATH: /run/secrets/jwt_public_key
       HMAC_SECRET: ${HMAC_SECRET:-change_this_in_production_32chars!!}
       QR_TOKEN_TTL_SECONDS: 60
+      # Datadog APM
+      DD_AGENT_HOST: datadog-agent
+      DD_TRACE_AGENT_PORT: 8126
+      DD_SERVICE: entitlement-service
+      DD_ENV: development
+      DD_VERSION: "1.0.0"
+      DD_LOGS_INJECTION: "true"
+      # DogStatsD host for custom security metrics
+      STATSD_HOST: datadog-agent
+      STATSD_PORT: 8125
     volumes:
       - ./secrets:/run/secrets:ro
     depends_on:
@@ -125,6 +177,8 @@ services:
         condition: service_healthy
       kafka:
         condition: service_healthy
+    labels:
+      com.datadoghq.ad.logs: '[{"source":"python","service":"entitlement-service"}]'
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
       interval: 15s
@@ -143,11 +197,20 @@ services:
       DATABASE_URL: postgresql://${POSTGRES_USER:-passguard}:${POSTGRES_PASSWORD:-passguard_dev}@postgres:5432/${POSTGRES_DB:-passguard}
       IMPOSSIBLE_TRAVEL_WINDOW_MINUTES: 30
       NODE_ENV: development
+      # Datadog APM
+      DD_AGENT_HOST: datadog-agent
+      DD_TRACE_AGENT_PORT: 8126
+      DD_SERVICE: audit-service
+      DD_ENV: development
+      DD_VERSION: "1.0.0"
+      DD_LOGS_INJECTION: "true"
     depends_on:
       postgres:
         condition: service_healthy
       kafka:
         condition: service_healthy
+    labels:
+      com.datadoghq.ad.logs: '[{"source":"nodejs","service":"audit-service"}]'
 
 volumes:
   postgres_data:

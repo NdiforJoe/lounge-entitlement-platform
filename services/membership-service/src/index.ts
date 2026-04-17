@@ -1,3 +1,14 @@
+// Datadog APM — must be imported before any other module so it can instrument
+// Express, pg, and kafkajs automatically via monkey-patching.
+// This gives distributed traces across membership → entitlement → audit.
+import tracer from "dd-trace";
+tracer.init({
+  service: "membership-service",
+  env: process.env.NODE_ENV ?? "development",
+  version: "1.0.0",
+  logInjection: true,   // Adds trace_id to Winston logs — correlates logs + traces in Datadog
+});
+
 import express from "express";
 import helmet from "helmet";
 import rateLimit from "express-rate-limit";
