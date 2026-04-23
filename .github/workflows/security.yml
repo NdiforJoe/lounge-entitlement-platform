@@ -165,7 +165,7 @@ jobs:
         run: chmod a+w .
 
       - name: Run OWASP ZAP baseline scan against entitlement-service
-        uses: zaproxy/action-baseline@v0.12.0
+        uses: zaproxy/action-baseline@v0.15.0
         with:
           target: "http://localhost:8000"
           rules_file_name: ".zap/rules.tsv"
