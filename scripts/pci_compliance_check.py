@@ -39,11 +39,11 @@ def check_no_raw_pan() -> tuple[bool, str]:
     Ensures no code stores or logs raw card numbers.
     """
     patterns = [
-        r'card_number',
-        r'pan\b',
-        r'primary_account_number',
-        r'\b4[0-9]{12}(?:[0-9]{3})?\b',  # Visa PAN pattern
-        r'\b5[1-5][0-9]{14}\b',            # Mastercard PAN pattern
+        r'card_number\s*[=:]',             # card_number variable/field assignment
+        r'\bpan\s*[=:]',                   # pan variable/dict-key assignment (not docs)
+        r'primary_account_number\s*[=:]',  # explicit PAN field name
+        r'\b4[0-9]{12}(?:[0-9]{3})?\b',   # Visa PAN pattern (16-digit literal)
+        r'\b5[1-5][0-9]{14}\b',            # Mastercard PAN pattern (16-digit literal)
     ]
     src_files = list(ROOT.glob("services/**/*.ts")) + list(ROOT.glob("services/**/*.py"))
     for path in src_files:

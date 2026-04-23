@@ -143,6 +143,35 @@ resource "aws_iam_role_policy_attachment" "config" {
   policy_arn = "arn:aws:iam::aws:policy/service-role/AWS_ConfigRole"
 }
 
+# Dedicated access log bucket for Config snapshots (CKV_AWS_18)
+# This bucket IS the log target — enabling access logging on it would create
+# a circular dependency, so CKV_AWS_18 is skipped here only.
+#checkov:skip=CKV_AWS_18:This bucket is the access log target for config_snapshots — circular dependency if enabled
+resource "aws_s3_bucket" "config_access_logs" {
+  bucket        = "${var.environment}-passguard-config-logs-${data.aws_caller_identity.current.account_id}"
+  force_destroy = false
+
+  tags = merge(var.tags, { Name = "${var.environment}-passguard-config-access-logs" })
+}
+
+resource "aws_s3_bucket_public_access_block" "config_access_logs" {
+  bucket                  = aws_s3_bucket.config_access_logs.id
+  block_public_acls       = true
+  block_public_policy     = true
+  ignore_public_acls      = true
+  restrict_public_buckets = true
+}
+
+resource "aws_s3_bucket_server_side_encryption_configuration" "config_access_logs" {
+  bucket = aws_s3_bucket.config_access_logs.id
+  rule {
+    apply_server_side_encryption_by_default {
+      sse_algorithm     = "aws:kms"
+      kms_master_key_id = var.logs_key_arn
+    }
+  }
+}
+
 # S3 bucket for Config snapshots
 resource "aws_s3_bucket" "config_snapshots" {
   bucket        = "${var.environment}-passguard-config-${data.aws_caller_identity.current.account_id}"
@@ -172,6 +201,12 @@ resource "aws_s3_bucket_server_side_encryption_configuration" "config_snapshots"
 resource "aws_s3_bucket_versioning" "config_snapshots" {
   bucket = aws_s3_bucket.config_snapshots.id
   versioning_configuration { status = "Enabled" }
+}
+
+resource "aws_s3_bucket_logging" "config_snapshots" {
+  bucket        = aws_s3_bucket.config_snapshots.id
+  target_bucket = aws_s3_bucket.config_access_logs.id
+  target_prefix = "config-snapshots/"
 }
 
 resource "aws_s3_bucket_policy" "config_snapshots" {
