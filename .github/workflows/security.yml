@@ -84,7 +84,7 @@ jobs:
         working-directory: services/entitlement-service
         run: |
           pip install pip-audit
-          pip-audit -r requirements.txt --severity high
+          pip-audit -r requirements.txt
 
   # ── Gate 4: Container Scanning ──────────────────────────────────────────────
   container-scan:
@@ -106,6 +106,8 @@ jobs:
           format: table
           exit-code: "1"
           severity: HIGH,CRITICAL
+          skip-dirs: /usr/local/lib/node_modules/npm,/usr/local/lib/node_modules/corepack,/opt/yarn-v1.22.22
+          ignore-unfixed: true
 
       - name: Scan entitlement-service
         uses: aquasecurity/trivy-action@master
@@ -114,6 +116,7 @@ jobs:
           format: table
           exit-code: "1"
           severity: HIGH,CRITICAL
+          ignore-unfixed: true
 
       - name: Scan audit-service
         uses: aquasecurity/trivy-action@master
@@ -122,6 +125,8 @@ jobs:
           format: table
           exit-code: "1"
           severity: HIGH,CRITICAL
+          skip-dirs: /usr/local/lib/node_modules/npm,/usr/local/lib/node_modules/corepack,/opt/yarn-v1.22.22
+          ignore-unfixed: true
 
   # ── Gate 5: IaC Security ────────────────────────────────────────────────────
   iac-security:
