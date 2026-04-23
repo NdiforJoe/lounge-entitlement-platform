@@ -18,7 +18,7 @@ jobs:
     name: "Gate 1 — Secret Scanning (Gitleaks)"
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
         with:
           fetch-depth: 0  # full history for Gitleaks
       - uses: gitleaks/gitleaks-action@v2
@@ -32,7 +32,7 @@ jobs:
     container:
       image: semgrep/semgrep
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
       - name: Run Semgrep with PCI DSS + JWT + security rulesets
         run: |
           semgrep scan \
@@ -56,7 +56,7 @@ jobs:
     name: "Gate 3 — Dependency Audit"
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
 
       - name: Setup Node.js
         uses: actions/setup-node@v4
@@ -91,7 +91,7 @@ jobs:
     name: "Gate 4 — Container Scanning (Trivy)"
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
 
       - name: Build images
         run: |
@@ -133,7 +133,7 @@ jobs:
     name: "Gate 5 — IaC Security (Checkov)"
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
       - name: Run Checkov on Terraform
         uses: bridgecrewio/checkov-action@master
         with:
@@ -149,7 +149,7 @@ jobs:
     name: "Gate 6 — DAST (OWASP ZAP)"
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
 
       - name: Start services for DAST scan
         run: |
@@ -177,7 +177,7 @@ jobs:
     name: "Gate 7 — SBOM (Syft)"
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
 
       - name: Build images
         run: |
@@ -203,7 +203,7 @@ jobs:
     name: "Gate 8 — PCI DSS v4 Compliance Gate"
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
       - uses: actions/setup-python@v5
         with:
           python-version: "3.12"
@@ -225,7 +225,7 @@ jobs:
       - compliance-gate
     if: github.ref == 'refs/heads/main' && github.event_name == 'push'
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
       - name: All security gates passed
         run: |
           echo "All 8 security gates passed."
